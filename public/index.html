@@ -498,7 +498,7 @@
 
     <header>
       <h1>Taldau</h1>
-      <p>Office document translator &mdash; .pptx, .docx, .xlsx</p>
+      <p>Office document translator &mdash; .pptx, .docx, .xlsx, .pdf</p>
     </header>
 
     <!-- Language Selection -->
@@ -569,12 +569,12 @@
              @dragleave.prevent="dragging = false"
              @drop.prevent="onDrop($event)">
           <input type="file" name="file"
-                 accept=".pptx,.docx,.xlsx"
+                 accept=".pptx,.docx,.xlsx,.pdf"
                  @change="onFileSelect($event)"
                  x-ref="fileInput">
           <div class="upload-icon">&#128196;</div>
           <p>Drop file here or click to select</p>
-          <div class="formats">.pptx &bull; .docx &bull; .xlsx</div>
+          <div class="formats">.pptx &bull; .docx &bull; .xlsx &bull; .pdf</div>
         </div>
 
         <template x-if="fileName">

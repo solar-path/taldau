@@ -323,7 +323,7 @@ function findXlsxStrings(xml: string, jobId?: string): ParagraphInfo[] {
 
 // ─── Public API ─────────────────────────────────────────────────────
 
-export type DocType = "pptx" | "docx" | "xlsx";
+export type DocType = "pptx" | "docx" | "xlsx" | "pdf";
 
 export function getTranslatablePaths(type: DocType): RegExp[] {
   switch (type) {
@@ -344,6 +344,8 @@ export function getTranslatablePaths(type: DocType): RegExp[] {
       return [
         /^xl\/sharedStrings\.xml$/,
       ];
+    case "pdf":
+      return []; // PDF uses its own pipeline, not ZIP/XML
   }
 }
 
@@ -353,6 +355,7 @@ export function detectDocType(filename: string): DocType | null {
     case "pptx": return "pptx";
     case "docx": return "docx";
     case "xlsx": return "xlsx";
+    case "pdf": return "pdf";
     default: return null;
   }
 }
@@ -397,6 +400,9 @@ export async function translateXml(
       case "xlsx":
         paragraphs = findXlsxStrings(xml, jobId);
         break;
+      case "pdf":
+        // PDF uses its own pipeline in src/pdf.ts, not translateXml
+        return xml;
     }
 
     if (paragraphs.length === 0) {

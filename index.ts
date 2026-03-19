@@ -8,7 +8,8 @@ import { readdir, mkdir } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { cpus } from "node:os";
 import { detectDocType, getTranslatablePaths, translateXml } from "./src/parsers";
-import { LANGUAGES, type TranslateOptions } from "./src/translate";
+import { LANGUAGES, type TranslateOptions, translateBatch } from "./src/translate";
+import { extractPdfContent, buildInternalDoc, collectTexts, buildTranslatedHtml, renderToPdf, MAX_PDF_SIZE, MAX_PDF_PAGES } from "./src/pdf";
 import { getCacheStats, clearCache, getGlossaryTerms, getGlossaryMap, addGlossaryTerm, updateGlossaryTerm, deleteGlossaryTerm } from "./src/db";
 import { log, getRecentLogs, getJobLogs, clearJobLogs, logsToHtml } from "./src/logger";
 
@@ -42,7 +43,7 @@ await mkdir(ORIGINAL_DIR, { recursive: true });
 await mkdir(RESULT_DIR, { recursive: true });
 
 // Track translation progress per job
-const jobs = new Map<string, { status: string; progress: number; total: number; error?: string; fileName?: string }>();
+const jobs = new Map<string, { status: string; progress: number; total: number; error?: string; fileName?: string; stage?: string }>();
 
 async function processDocument(jobId: string, filePath: string, opts: TranslateOptions) {
   const fileName = basename(filePath);
@@ -62,8 +63,70 @@ async function processDocument(jobId: string, filePath: string, opts: TranslateO
   }, jobId);
 
   try {
+    const startMs = performance.now();
     const fileData = await Bun.file(filePath).arrayBuffer();
     log.info("job", "File loaded", { fileName, sizeKb: Math.round(fileData.byteLength / 1024) }, jobId);
+
+    // ── PDF pipeline (separate from ZIP/OOXML) ──
+    if (docType === "pdf") {
+      if (fileData.byteLength > MAX_PDF_SIZE) {
+        throw new Error(`PDF too large (${Math.round(fileData.byteLength / 1024 / 1024)}MB). Maximum: 50MB`);
+      }
+
+      jobs.set(jobId, { status: "translating", progress: 0, total: 3, fileName, stage: "extracting" });
+
+      const pages = await extractPdfContent(new Uint8Array(fileData), jobId);
+      const totalItems = pages.reduce((sum, p) => sum + p.items.length, 0);
+
+      if (totalItems === 0) {
+        log.warn("job", "PDF contains no extractable text (may be scanned/image-only)", { fileName }, jobId);
+        jobs.set(jobId, { status: "error", progress: 0, total: 0, error: "No text found in PDF. The file may contain only images.", fileName });
+        return;
+      }
+
+      if (pages.length > MAX_PDF_PAGES) {
+        throw new Error(`PDF has ${pages.length} pages. Maximum: ${MAX_PDF_PAGES}`);
+      }
+
+      jobs.set(jobId, { status: "translating", progress: 1, total: 3, fileName, stage: "translating" });
+
+      const doc = buildInternalDoc(pages, jobId);
+      const texts = collectTexts(doc);
+
+      log.info("job", "PDF texts collected for translation", {
+        blocks: texts.length,
+        totalChars: texts.reduce((sum, t) => sum + t.length, 0),
+      }, jobId);
+
+      const translated = await translateBatch(texts, opts);
+
+      // Build translation map
+      const translationMap = new Map<string, string>();
+      for (let i = 0; i < texts.length; i++) {
+        translationMap.set(texts[i]!, translated[i]!);
+      }
+
+      jobs.set(jobId, { status: "translating", progress: 2, total: 3, fileName, stage: "generating" });
+
+      const html = buildTranslatedHtml(doc, translationMap);
+      const { buffer, format } = await renderToPdf(html, pages[0]!.width, pages[0]!.height, jobId);
+
+      const outputFileName = format === "pdf" ? fileName : fileName.replace(/\.pdf$/i, ".html");
+      const outputPath = join(RESULT_DIR, outputFileName);
+      await Bun.write(outputPath, buffer);
+
+      const totalMs = Math.round(performance.now() - startMs);
+      log.info("job", "PDF translation complete", {
+        jobId: jobId.slice(0, 8),
+        fileName,
+        outputFormat: format,
+        totalMs,
+        outputSizeKb: Math.round(buffer.length / 1024),
+      }, jobId);
+
+      jobs.set(jobId, { status: "done", progress: 3, total: 3, fileName: outputFileName });
+      return;
+    }
 
     const zip = await JSZip.loadAsync(fileData);
 
@@ -90,7 +153,6 @@ async function processDocument(jobId: string, filePath: string, opts: TranslateO
 
     log.info("job", "Parallel processing with CPU cores", { cpuCount: CPU_COUNT, files: translatableFiles.length }, jobId);
 
-    const startMs = performance.now();
     let completedCount = 0;
 
     await parallelMap(translatableFiles, async (xmlPath, i) => {
@@ -199,7 +261,7 @@ const server = Bun.serve({
       const docType = detectDocType(file.name);
       if (!docType) {
         log.warn("server", "Unsupported file uploaded", { name: file.name });
-        return new Response('<div class="error">Unsupported format. Use .pptx, .docx, or .xlsx</div>', {
+        return new Response('<div class="error">Unsupported format. Use .pptx, .docx, .xlsx, or .pdf</div>', {
           status: 400,
           headers: { "Content-Type": "text/html" },
         });
@@ -262,10 +324,18 @@ const server = Bun.serve({
       }
 
       const pct = job.total > 0 ? Math.round((job.progress / job.total) * 100) : 0;
+      const stageLabels: Record<string, string> = {
+        extracting: "Extracting text from PDF...",
+        translating: "Translating...",
+        generating: "Generating PDF...",
+      };
+      const statusText = job.stage && stageLabels[job.stage]
+        ? stageLabels[job.stage]
+        : `Translating: ${job.progress}/${job.total} files (${pct}%)`;
       return new Response(
         `<div id="progress" hx-get="/api/progress/${jobId}" hx-trigger="every 1s" hx-swap="outerHTML">
           <div class="progress-bar"><div class="progress-fill" style="width: ${pct}%"></div></div>
-          <p class="status">Translating: ${job.progress}/${job.total} files (${pct}%)</p>
+          <p class="status">${statusText}</p>
         </div>`,
         { headers: { "Content-Type": "text/html" } }
       );
@@ -312,7 +382,7 @@ const server = Bun.serve({
     // ── API: List files in result ──
     if (url.pathname === "/api/results") {
       const files = await readdir(RESULT_DIR);
-      const officeFiles = files.filter((f) => /\.(pptx|docx|xlsx)$/i.test(f));
+      const officeFiles = files.filter((f) => /\.(pptx|docx|xlsx|pdf|html)$/i.test(f));
       if (officeFiles.length === 0) {
         return new Response('<p class="muted">No translated files yet</p>', {
           headers: { "Content-Type": "text/html" },

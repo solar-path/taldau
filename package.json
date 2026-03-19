@@ -14,6 +14,8 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "jszip": "^3.10.1"
+    "@easykit/pdf": "/Users/work/apps/easykit-pdf",
+    "jszip": "^3.10.1",
+    "unpdf": "^1.4.0"
   }
 }
