@@ -629,25 +629,16 @@
   <script>
     function translator() {
       return {
-        languages: {
-          ru: 'Русский',
-          kk: 'Қазақша',
-          en: 'English',
-          tr: 'Türkçe',
-          uz: "O'zbekcha",
-          ky: 'Кыргызча',
-          zh: '中文',
-          ar: 'العربية',
-          de: 'Deutsch',
-          fr: 'Français',
-          es: 'Español',
-          ko: '한국어',
-          ja: '日本語',
-        },
+        languages: {},
         fromLang: 'ru',
         toLang: 'kk',
         fileName: '',
         dragging: false,
+
+        async init() {
+          const res = await fetch('/api/languages');
+          this.languages = await res.json();
+        },
 
         swapLangs() {
           const tmp = this.fromLang;

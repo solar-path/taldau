@@ -4,8 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun --watch index.ts",
-    "start": "bun index.ts"
+    "dev": "lsof -ti :3333 | xargs kill -9 2>/dev/null; bun --watch index.ts",
+    "start": "bun index.ts",
+    "build": "./scripts/build.sh"
   },
   "devDependencies": {
     "@types/bun": "latest"
