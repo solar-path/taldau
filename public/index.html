@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Taldau — Document Translator</title>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js" defer></script>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #252836;
+      --border: #2e3348;
+      --text: #e4e6f0;
+      --muted: #8b8fa3;
+      --primary: #6c5ce7;
+      --primary-hover: #7f71ed;
+      --success: #2ed573;
+      --error: #ff4757;
+      --radius: 12px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    header p {
+      color: var(--muted);
+      margin-top: 8px;
+      font-size: 0.95rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      margin-bottom: 20px;
+    }
+
+    .card h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: var(--text);
+    }
+
+    /* Language selector */
+    .lang-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .lang-select {
+      flex: 1;
+    }
+
+    .lang-select label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    select {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.95rem;
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b8fa3'%3E%3Cpath d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+    }
+
+    select:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .swap-btn {
+      margin-top: 22px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--muted);
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 1.2rem;
+      transition: all 0.2s;
+    }
+
+    .swap-btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    /* Upload zone */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--primary);
+      background: rgba(108, 92, 231, 0.05);
+    }
+
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .upload-icon {
+      font-size: 2.5rem;
+      margin-bottom: 12px;
+    }
+
+    .upload-zone p {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .upload-zone .formats {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 8px;
+      opacity: 0.7;
+    }
+
+    .file-name {
+      background: var(--surface2);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.9rem;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      color: white;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      width: 100%;
+      margin-top: 20px;
+    }
+
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-download {
+      background: var(--success);
+      margin-top: 12px;
+    }
+
+    .btn-download:hover { opacity: 0.9; }
+
+    .btn-sm {
+      padding: 6px 14px;
+      font-size: 0.8rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      margin-left: 12px;
+    }
+
+    .btn-sm:hover { border-color: var(--error); color: var(--error); }
+
+    /* Progress */
+    .progress-bar {
+      background: var(--surface2);
+      border-radius: 6px;
+      height: 8px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--primary);
+      border-radius: 6px;
+      transition: width 0.3s ease;
+    }
+
+    .status {
+      font-size: 0.9rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .done {
+      text-align: center;
+      padding: 20px;
+    }
+
+    .done p {
+      color: var(--success);
+      font-weight: 600;
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+    }
+
+    .error {
+      color: var(--error);
+      padding: 12px;
+      text-align: center;
+      font-size: 0.9rem;
+    }
+
+    .muted { color: var(--muted); font-size: 0.9rem; text-align: center; }
+
+    /* Results & cache */
+    .file-list {
+      list-style: none;
+      padding: 0;
+    }
+
+    .file-list li {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .file-list li:last-child { border-bottom: none; }
+
+    .file-list a {
+      color: var(--primary);
+      text-decoration: none;
+      font-size: 0.95rem;
+    }
+
+    .file-list a:hover { text-decoration: underline; }
+
+    .cache-stats {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 0.9rem;
+    }
+
+    .badge {
+      background: var(--surface2);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .section-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    /* Log viewer */
+    .log-panel {
+      max-height: 400px;
+      overflow-y: auto;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 0.78rem;
+      line-height: 1.6;
+      padding: 12px;
+      background: var(--bg);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .log-panel::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .log-panel::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+
+    .log-line {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 1px 0;
+    }
+
+    .log-time { color: var(--muted); }
+    .log-level { font-weight: 600; min-width: 5ch; display: inline-block; }
+    .log-scope { color: var(--primary); }
+    .log-msg { color: var(--text); }
+    .log-data { color: var(--muted); font-size: 0.72rem; }
+
+    .log-info .log-level { color: #5bc0de; }
+    .log-warn .log-level { color: #f0ad4e; }
+    .log-error .log-level { color: #ff4757; }
+    .log-error .log-msg { color: #ff4757; }
+    .log-debug .log-level { color: #6c757d; }
+    .log-debug .log-msg { color: #6c757d; }
+
+    .log-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .log-filters {
+      display: flex;
+      gap: 6px;
+    }
+
+    .log-filter {
+      padding: 3px 10px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--muted);
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+
+    .log-filter.active {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    @media (max-width: 600px) {
+      .section-row { grid-template-columns: 1fr; }
+      .lang-row { flex-direction: column; }
+      .swap-btn { margin-top: 0; transform: rotate(90deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" x-data="translator()">
+
+    <header>
+      <h1>Taldau</h1>
+      <p>Office document translator &mdash; .pptx, .docx, .xlsx</p>
+    </header>
+
+    <!-- Language Selection -->
+    <div class="card">
+      <h2>Language</h2>
+      <div class="lang-row">
+        <div class="lang-select">
+          <label>From</label>
+          <select x-model="fromLang" name="from">
+            <template x-for="(name, code) in languages" :key="code">
+              <option :value="code" x-text="name" :selected="code === fromLang"></option>
+            </template>
+          </select>
+        </div>
+
+        <button class="swap-btn" @click="swapLangs()" title="Swap languages">&harr;</button>
+
+        <div class="lang-select">
+          <label>To</label>
+          <select x-model="toLang" name="to">
+            <template x-for="(name, code) in languages" :key="code">
+              <option :value="code" x-text="name" :selected="code === toLang"></option>
+            </template>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload -->
+    <div class="card">
+      <h2>Upload document</h2>
+
+      <form id="upload-form"
+            hx-post="/api/translate"
+            hx-target="#result"
+            hx-swap="innerHTML"
+            hx-encoding="multipart/form-data"
+            @submit="onSubmit($event)">
+
+        <input type="hidden" name="from" :value="fromLang">
+        <input type="hidden" name="to" :value="toLang">
+
+        <div class="upload-zone"
+             :class="{ 'drag-over': dragging }"
+             @dragover.prevent="dragging = true"
+             @dragleave.prevent="dragging = false"
+             @drop.prevent="onDrop($event)">
+          <input type="file" name="file"
+                 accept=".pptx,.docx,.xlsx"
+                 @change="onFileSelect($event)"
+                 x-ref="fileInput">
+          <div class="upload-icon">&#128196;</div>
+          <p>Drop file here or click to select</p>
+          <div class="formats">.pptx &bull; .docx &bull; .xlsx</div>
+        </div>
+
+        <template x-if="fileName">
+          <div class="file-name">
+            &#128206; <span x-text="fileName"></span>
+          </div>
+        </template>
+
+        <button type="submit" class="btn btn-primary" :disabled="!fileName">
+          Translate
+        </button>
+      </form>
+
+      <div id="result" style="margin-top: 20px;"></div>
+    </div>
+
+    <!-- Results & Cache -->
+    <div class="section-row">
+      <div class="card">
+        <h2>Translated files</h2>
+        <div hx-get="/api/results" hx-trigger="load, every 10s" hx-swap="innerHTML"></div>
+      </div>
+
+      <div class="card">
+        <h2>Translation cache</h2>
+        <div id="cache-info" hx-get="/api/cache" hx-trigger="load, every 30s" hx-swap="innerHTML"></div>
+      </div>
+    </div>
+
+    <!-- Logs -->
+    <div class="card" x-data="{ level: 'all', autoScroll: true }">
+      <div class="log-header">
+        <h2>Logs</h2>
+        <div class="log-filters">
+          <button class="log-filter" :class="{ active: level === 'all' }" @click="level = 'all'">All</button>
+          <button class="log-filter" :class="{ active: level === 'info' }" @click="level = 'info'">Info</button>
+          <button class="log-filter" :class="{ active: level === 'warn' }" @click="level = 'warn'">Warn</button>
+          <button class="log-filter" :class="{ active: level === 'error' }" @click="level = 'error'">Error</button>
+          <button class="log-filter" :class="{ active: level === 'debug' }" @click="level = 'debug'">Debug</button>
+        </div>
+      </div>
+      <div class="log-panel"
+           id="log-container"
+           hx-get="/api/logs?limit=200"
+           hx-trigger="load, every 2s"
+           hx-swap="innerHTML scroll:bottom">
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    function translator() {
+      return {
+        languages: {
+          ru: 'Русский',
+          kk: 'Қазақша',
+          en: 'English',
+          tr: 'Türkçe',
+          uz: "O'zbekcha",
+          ky: 'Кыргызча',
+          zh: '中文',
+          ar: 'العربية',
+          de: 'Deutsch',
+          fr: 'Français',
+          es: 'Español',
+          ko: '한국어',
+          ja: '日本語',
+        },
+        fromLang: 'ru',
+        toLang: 'kk',
+        fileName: '',
+        dragging: false,
+
+        swapLangs() {
+          const tmp = this.fromLang;
+          this.fromLang = this.toLang;
+          this.toLang = tmp;
+        },
+
+        onFileSelect(e) {
+          const file = e.target.files[0];
+          this.fileName = file ? file.name : '';
+        },
+
+        onDrop(e) {
+          this.dragging = false;
+          const file = e.dataTransfer.files[0];
+          if (file) {
+            this.$refs.fileInput.files = e.dataTransfer.files;
+            this.fileName = file.name;
+          }
+        },
+
+        onSubmit(e) {
+          setTimeout(() => {
+            this.fileName = '';
+            this.$refs.fileInput.value = '';
+          }, 500);
+        }
+      };
+    }
+
+    // Auto-scroll logs & client-side filtering
+    document.addEventListener('htmx:afterSwap', function(e) {
+      if (e.detail.target.id === 'log-container') {
+        const container = e.detail.target;
+        container.scrollTop = container.scrollHeight;
+
+        // Apply active filter
+        const filterEl = container.closest('.card');
+        if (filterEl) {
+          const scope = filterEl.__x;
+          if (scope) {
+            applyLogFilter(container, scope.$data.level);
+          }
+        }
+      }
+    });
+
+    // Watch for filter changes
+    document.addEventListener('alpine:init', () => {
+      Alpine.effect(() => {
+        const cards = document.querySelectorAll('.card');
+        cards.forEach(card => {
+          const scope = card.__x;
+          if (scope && scope.$data.level !== undefined) {
+            const container = card.querySelector('#log-container');
+            if (container) applyLogFilter(container, scope.$data.level);
+          }
+        });
+      });
+    });
+
+    function applyLogFilter(container, level) {
+      const lines = container.querySelectorAll('.log-line');
+      lines.forEach(line => {
+        if (level === 'all') {
+          line.style.display = '';
+        } else {
+          line.style.display = line.classList.contains('log-' + level) ? '' : 'none';
+        }
+      });
+    }
+  </script>
+</body>
+</html>
