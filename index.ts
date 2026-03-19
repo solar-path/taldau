@@ -9,7 +9,7 @@ import { join, basename } from "node:path";
 import { cpus } from "node:os";
 import { detectDocType, getTranslatablePaths, translateXml } from "./src/parsers";
 import { LANGUAGES, type TranslateOptions } from "./src/translate";
-import { getCacheStats, clearCache } from "./src/db";
+import { getCacheStats, clearCache, getGlossaryTerms, getGlossaryMap, addGlossaryTerm, updateGlossaryTerm, deleteGlossaryTerm } from "./src/db";
 import { log, getRecentLogs, getJobLogs, clearJobLogs, logsToHtml } from "./src/logger";
 
 const PORT = Number(process.env.PORT) || 3333;
@@ -136,6 +136,33 @@ async function processDocument(jobId: string, filePath: string, opts: TranslateO
   }
 }
 
+// ─── Helpers ────────────────────────────────────────────────────────
+
+function glossaryHtml(from: string, to: string): Response {
+  const terms = getGlossaryTerms(from, to);
+  let html = `<table class="glossary-table">
+    <thead><tr><th>Source term</th><th>Translation</th><th></th></tr></thead><tbody>`;
+
+  for (const t of terms) {
+    html += `<tr>
+      <td>${escHtml(t.source_term)}</td>
+      <td>${escHtml(t.translated_term)}</td>
+      <td><button class="btn btn-sm btn-del"
+        hx-delete="/api/glossary/${t.id}?from=${from}&to=${to}"
+        hx-target="#glossary-list" hx-swap="innerHTML"
+        hx-confirm="Delete term?">&times;</button></td>
+    </tr>`;
+  }
+
+  html += `</tbody></table>`;
+  if (terms.length === 0) html = `<p class="muted">No glossary terms for this language pair</p>`;
+  return new Response(html, { headers: { "Content-Type": "text/html" } });
+}
+
+function escHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 // ─── HTTP Server ────────────────────────────────────────────────────
 
 const server = Bun.serve({
@@ -161,7 +188,6 @@ const server = Bun.serve({
       const file = formData.get("file") as File | null;
       const from = (formData.get("from") as string) || "ru";
       const to = (formData.get("to") as string) || "kk";
-
       if (!file) {
         log.warn("server", "Upload attempt with no file");
         return new Response('<div class="error">No file uploaded</div>', {
@@ -191,8 +217,9 @@ const server = Bun.serve({
         sizeKb: Math.round(file.size / 1024),
       });
 
+      const glossary = getGlossaryMap(from, to);
       jobs.set(jobId, { status: "starting", progress: 0, total: 0, fileName: file.name });
-      processDocument(jobId, savePath, { from, to });
+      processDocument(jobId, savePath, { from, to, glossary });
 
       return new Response(
         `<div id="progress" hx-get="/api/progress/${jobId}" hx-trigger="every 1s" hx-swap="outerHTML">
@@ -306,6 +333,52 @@ const server = Bun.serve({
       return new Response(logsToHtml(entries), {
         headers: { "Content-Type": "text/html" },
       });
+    }
+
+    // ── API: Glossary CRUD ──
+    if (url.pathname === "/api/glossary" && req.method === "POST") {
+      const form = await req.formData();
+      const source = (form.get("source_term") as string || "").trim();
+      const translated = (form.get("translated_term") as string || "").trim();
+      const from = (form.get("from") as string) || "ru";
+      const to = (form.get("to") as string) || "kk";
+      if (source && translated) {
+        addGlossaryTerm(source, translated, from, to);
+        log.info("glossary", "Term added", { source, translated, from, to });
+      }
+      // Return updated table
+      return glossaryHtml(from, to);
+    }
+
+    if (url.pathname === "/api/glossary" && req.method === "GET") {
+      const from = url.searchParams.get("from") || "ru";
+      const to = url.searchParams.get("to") || "kk";
+      return glossaryHtml(from, to);
+    }
+
+    if (url.pathname.startsWith("/api/glossary/") && req.method === "DELETE") {
+      const id = Number(url.pathname.split("/").pop());
+      if (id) {
+        deleteGlossaryTerm(id);
+        log.info("glossary", "Term deleted", { id });
+      }
+      const from = url.searchParams.get("from") || "ru";
+      const to = url.searchParams.get("to") || "kk";
+      return glossaryHtml(from, to);
+    }
+
+    if (url.pathname.startsWith("/api/glossary/") && req.method === "PUT") {
+      const id = Number(url.pathname.split("/").pop());
+      const form = await req.formData();
+      const source = (form.get("source_term") as string || "").trim();
+      const translated = (form.get("translated_term") as string || "").trim();
+      if (id && source && translated) {
+        updateGlossaryTerm(id, source, translated);
+        log.info("glossary", "Term updated", { id, source, translated });
+      }
+      const from = url.searchParams.get("from") || "ru";
+      const to = url.searchParams.get("to") || "kk";
+      return glossaryHtml(from, to);
     }
 
     return new Response("Not found", { status: 404 });

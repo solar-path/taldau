@@ -331,8 +331,8 @@ export function getTranslatablePaths(type: DocType): RegExp[] {
       return [
         /^ppt\/slides\/slide\d+\.xml$/,
         /^ppt\/charts\/chart\d+\.xml$/,
-        // Skip slideMasters, slideLayouts, notesSlides — they contain
-        // only template placeholders and page numbers, not real content
+        /^ppt\/slideMasters\/slideMaster\d+\.xml$/,
+        /^ppt\/slideLayouts\/slideLayout\d+\.xml$/,
       ];
     case "docx":
       return [

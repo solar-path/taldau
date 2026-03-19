@@ -383,6 +383,109 @@
       color: var(--primary);
     }
 
+    /* Engine selector */
+    .engine-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .engine-row label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .engine-options {
+      display: flex;
+      gap: 4px;
+    }
+
+    .engine-btn {
+      padding: 6px 14px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface2);
+      color: var(--muted);
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .engine-btn.active {
+      border-color: var(--primary);
+      color: var(--primary);
+      background: rgba(108, 92, 231, 0.1);
+    }
+
+    .badge-ok { background: rgba(46, 213, 115, 0.15); color: var(--success); padding: 3px 10px; border-radius: 4px; font-size: 0.75rem; }
+    .badge-off { background: rgba(255, 71, 87, 0.15); color: var(--error); padding: 3px 10px; border-radius: 4px; font-size: 0.75rem; }
+
+    /* Glossary */
+    .glossary-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    .glossary-table th {
+      text-align: left;
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .glossary-table td {
+      padding: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .glossary-table tr:last-child td { border-bottom: none; }
+
+    .glossary-add {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .glossary-add input {
+      flex: 1;
+      padding: 8px 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+
+    .glossary-add input:focus { outline: none; border-color: var(--primary); }
+
+    .btn-add {
+      padding: 8px 16px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+
+    .btn-del {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 1.1rem;
+      padding: 2px 6px;
+    }
+
+    .btn-del:hover { color: var(--error); }
+
     @media (max-width: 600px) {
       .section-row { grid-template-columns: 1fr; }
       .lang-row { flex-direction: column; }
@@ -422,6 +525,29 @@
           </select>
         </div>
       </div>
+
+    </div>
+
+    <!-- Glossary -->
+    <div class="card">
+      <h2>Glossary</h2>
+      <form class="glossary-add"
+            hx-post="/api/glossary"
+            hx-target="#glossary-list"
+            hx-swap="innerHTML"
+            hx-encoding="multipart/form-data"
+            @submit="setTimeout(() => { $refs.gsrc.value = ''; $refs.gtrn.value = '' }, 100)">
+        <input type="hidden" name="from" :value="fromLang">
+        <input type="hidden" name="to" :value="toLang">
+        <input type="text" name="source_term" placeholder="Source term" required x-ref="gsrc">
+        <input type="text" name="translated_term" placeholder="Translation" required x-ref="gtrn">
+        <button type="submit" class="btn-add">Add</button>
+      </form>
+      <div id="glossary-list"
+           :hx-get="'/api/glossary?from=' + fromLang + '&to=' + toLang"
+           hx-trigger="load"
+           hx-swap="innerHTML">
+      </div>
     </div>
 
     <!-- Upload -->
@@ -437,7 +563,6 @@
 
         <input type="hidden" name="from" :value="fromLang">
         <input type="hidden" name="to" :value="toLang">
-
         <div class="upload-zone"
              :class="{ 'drag-over': dragging }"
              @dragover.prevent="dragging = true"
@@ -528,6 +653,14 @@
           const tmp = this.fromLang;
           this.fromLang = this.toLang;
           this.toLang = tmp;
+          this.refreshGlossary();
+        },
+
+        refreshGlossary() {
+          const el = document.getElementById('glossary-list');
+          if (el) {
+            htmx.ajax('GET', '/api/glossary?from=' + this.fromLang + '&to=' + this.toLang, { target: '#glossary-list', swap: 'innerHTML' });
+          }
         },
 
         onFileSelect(e) {
