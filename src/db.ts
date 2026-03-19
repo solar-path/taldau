@@ -129,3 +129,47 @@ export function deleteGlossaryTerm(id: number): void {
 export function getGlossaryStats(): number {
   return db.prepare<{ count: number }, []>(`SELECT COUNT(*) as count FROM glossary`).get()!.count;
 }
+
+// ─── Settings (API keys, preferences) ────────────────────────────
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  )
+`);
+
+const stmtSettingGet = db.prepare<{ value: string }, [string]>(
+  `SELECT value FROM settings WHERE key = ?`
+);
+const stmtSettingSet = db.prepare(
+  `INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`
+);
+const stmtSettingDelete = db.prepare(
+  `DELETE FROM settings WHERE key = ?`
+);
+const stmtSettingAll = db.prepare<{ key: string; value: string }, []>(
+  `SELECT key, value FROM settings ORDER BY key`
+);
+
+export function getSetting(key: string): string | null {
+  const row = stmtSettingGet.get(key);
+  return row ? row.value : null;
+}
+
+export function setSetting(key: string, value: string): void {
+  if (value.trim()) {
+    stmtSettingSet.run(key, value.trim());
+  } else {
+    stmtSettingDelete.run(key);
+  }
+}
+
+export function getAllSettings(): Record<string, string> {
+  const rows = stmtSettingAll.all();
+  const result: Record<string, string> = {};
+  for (const row of rows) {
+    result[row.key] = row.value;
+  }
+  return result;
+}

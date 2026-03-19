@@ -486,6 +486,64 @@
 
     .btn-del:hover { color: var(--error); }
 
+    /* API Keys */
+    .key-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+
+    .key-row:last-child { border-bottom: none; }
+
+    .key-info {
+      min-width: 120px;
+    }
+
+    .key-label {
+      font-size: 0.9rem;
+      font-weight: 500;
+      display: block;
+    }
+
+    .key-hint {
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+
+    .key-input {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex: 1;
+    }
+
+    .key-field {
+      flex: 1;
+      padding: 6px 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.85rem;
+      min-width: 0;
+    }
+
+    .key-field:focus { outline: none; border-color: var(--primary); }
+
+    .btn-save-key {
+      white-space: nowrap;
+    }
+
+    .btn-del-key {
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .btn-del-key:hover { border-color: var(--error); color: var(--error); }
+
     @media (max-width: 600px) {
       .section-row { grid-template-columns: 1fr; }
       .lang-row { flex-direction: column; }
@@ -526,6 +584,26 @@
         </div>
       </div>
 
+      <!-- Engine selector -->
+      <div class="engine-row">
+        <label>Engine</label>
+        <div id="engine-selector"
+             hx-get="/api/engines"
+             hx-trigger="load, keysUpdated from:body"
+             hx-swap="innerHTML"
+             class="engine-options">
+        </div>
+      </div>
+    </div>
+
+    <!-- API Keys -->
+    <div class="card">
+      <h2>API Keys</h2>
+      <div id="api-keys"
+           hx-get="/api/keys"
+           hx-trigger="load, keysUpdated from:body"
+           hx-swap="innerHTML">
+      </div>
     </div>
 
     <!-- Glossary -->

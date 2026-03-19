@@ -8,9 +8,9 @@ import { readdir, mkdir } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { cpus } from "node:os";
 import { detectDocType, getTranslatablePaths, translateXml } from "./src/parsers";
-import { LANGUAGES, type TranslateOptions, translateBatch } from "./src/translate";
+import { LANGUAGES, type TranslateOptions, translateBatch, getEngines, getActiveEngine, setActiveEngine, type EngineName } from "./src/translate";
 import { extractPdfContent, buildInternalDoc, collectTexts, buildTranslatedHtml, renderToPdf, MAX_PDF_SIZE, MAX_PDF_PAGES } from "./src/pdf";
-import { getCacheStats, clearCache, getGlossaryTerms, getGlossaryMap, addGlossaryTerm, updateGlossaryTerm, deleteGlossaryTerm } from "./src/db";
+import { getCacheStats, clearCache, getGlossaryTerms, getGlossaryMap, addGlossaryTerm, updateGlossaryTerm, deleteGlossaryTerm, getSetting, setSetting, getAllSettings } from "./src/db";
 import { log, getRecentLogs, getJobLogs, clearJobLogs, logsToHtml } from "./src/logger";
 
 const PORT = Number(process.env.PORT) || 3333;
@@ -449,6 +449,90 @@ const server = Bun.serve({
       const from = url.searchParams.get("from") || "ru";
       const to = url.searchParams.get("to") || "kk";
       return glossaryHtml(from, to);
+    }
+
+    // ── API: Translation engines ──
+    if (url.pathname === "/api/engines" && req.method === "GET") {
+      const enginesList = getEngines();
+      const active = getActiveEngine();
+      const html = enginesList.map((e) =>
+        `<button class="engine-btn ${e.name === active ? "active" : ""}" `
+        + `hx-post="/api/engines/${e.name}" hx-target="#engine-selector" hx-swap="innerHTML">`
+        + `${escHtml(e.label)}</button>`
+      ).join("");
+      return new Response(html, { headers: { "Content-Type": "text/html" } });
+    }
+
+    if (url.pathname.startsWith("/api/engines/") && req.method === "POST") {
+      const name = url.pathname.split("/").pop() as EngineName;
+      setActiveEngine(name);
+      const enginesList = getEngines();
+      const active = getActiveEngine();
+      const html = enginesList.map((e) =>
+        `<button class="engine-btn ${e.name === active ? "active" : ""}" `
+        + `hx-post="/api/engines/${e.name}" hx-target="#engine-selector" hx-swap="innerHTML">`
+        + `${escHtml(e.label)}</button>`
+      ).join("");
+      return new Response(html, { headers: { "Content-Type": "text/html" } });
+    }
+
+    // ── API: API Keys management ──
+    if (url.pathname === "/api/keys" && req.method === "GET") {
+      const keyConfigs = [
+        { key: "gemini_api_key", label: "Gemini", hint: "Free: 15 RPM, 1500 req/day" },
+        { key: "groq_api_key", label: "Groq", hint: "Free: 30 RPM, 14400 req/day" },
+        { key: "deepl_api_key", label: "DeepL", hint: "$5.49/1M символов, free: 500K/мес" },
+        { key: "google_cloud_api_key", label: "Google Cloud", hint: "$20/1M символов" },
+        { key: "microsoft_translator_key", label: "Microsoft", hint: "$10/1M символов, 2M free/мес" },
+        { key: "openai_api_key", label: "OpenAI", hint: "GPT-4o-mini ~$0.15/1M токенов" },
+        { key: "anthropic_api_key", label: "Claude", hint: "Haiku ~$0.25/1M токенов" },
+      ];
+      const rows = keyConfigs.map((c) => {
+        const val = getSetting(c.key) || "";
+        const masked = val ? "••••" + val.slice(-4) : "";
+        const hasKey = !!val;
+        return `<div class="key-row">
+          <div class="key-info">
+            <span class="key-label">${escHtml(c.label)}</span>
+            <span class="key-hint">${escHtml(c.hint)}</span>
+          </div>
+          <div class="key-input">
+            <input type="password" name="${c.key}" placeholder="${masked || 'API key...'}"
+              class="key-field" autocomplete="off">
+            <button class="btn-sm btn-save-key"
+              hx-post="/api/keys" hx-include="[name='${c.key}']"
+              hx-target="#api-keys" hx-swap="innerHTML"
+              hx-encoding="multipart/form-data">
+              ${hasKey ? "Update" : "Save"}</button>
+            ${hasKey ? `<button class="btn-sm btn-del-key"
+              hx-delete="/api/keys/${c.key}"
+              hx-target="#api-keys" hx-swap="innerHTML">Del</button>` : ""}
+          </div>
+        </div>`;
+      }).join("");
+      return new Response(rows, { headers: { "Content-Type": "text/html" } });
+    }
+
+    if (url.pathname === "/api/keys" && req.method === "POST") {
+      const form = await req.formData();
+      for (const [key, value] of form.entries()) {
+        if (typeof value === "string" && value.trim()) {
+          setSetting(key, value.trim());
+          log.info("settings", "API key saved", { key, length: value.trim().length });
+        }
+      }
+      return new Response("", {
+        headers: { "Content-Type": "text/html", "HX-Trigger": "keysUpdated" },
+      });
+    }
+
+    if (url.pathname.startsWith("/api/keys/") && req.method === "DELETE") {
+      const key = url.pathname.replace("/api/keys/", "");
+      setSetting(key, "");
+      log.info("settings", "API key removed", { key });
+      return new Response("", {
+        headers: { "Content-Type": "text/html", "HX-Trigger": "keysUpdated" },
+      });
     }
 
     return new Response("Not found", { status: 404 });

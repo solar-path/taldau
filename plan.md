@@ -23,19 +23,39 @@ API-ключи для интеграций
 Stripe/Kaspi/CloudPayments интеграция
 Тарифные планы: по объёму (символы/страницы), по подписке
 Учёт потребления (метринг)
-5. Инфраструктура
+5. База данных
+
+Текущая схема (3 таблицы: translations, glossary, settings) — чисто key-value, reads >> writes, сложных запросов нет.
+
+Этап 1 — прототип → продукт (сейчас):
+  SQLite + WAL (уже настроено) + Docker с named volume для персистентности файла БД
+  Менять ничего не нужно, просто не забыть volume при деплое
+
+Этап 2 — multi-tenant SaaS:
+  LibSQL / Turso — форк SQLite с сетевым доступом и tenant-брэнчами
+  API совместим с bun:sqlite, миграция кода минимальна
+  Альтернатива: PostgreSQL (Neon / Supabase managed), если нужна аналитика или сложные запросы
+
+Этап 3 — горизонтальный скейл (несколько инстансов):
+  PostgreSQL обязателен — SQLite не поддерживает конкурентную запись из разных процессов
+
+Docker:
+  Образ oven/bun:1, named volume для translations.db
+  docker-compose с volume taldau-data:/app/translations.db
+
+6. Инфраструктура
 
 Очередь задач (Redis/BullMQ) вместо in-memory jobs Map — сейчас при рестарте всё теряется
 S3/MinIO для хранения файлов вместо локальных папок
 Rate limiting на API
 HTTPS, CORS, CSP headers
 Мониторинг (uptime, ошибки API переводчика, метрики по задачам)
-6. Юридическое
+7. Юридическое
 
 Terms of Service, Privacy Policy
 GDPR/PDPA — удаление данных пользователя, retention period для файлов
 Не хранить документы дольше необходимого
-7. Расширение форматов
+8. Расширение форматов
 
 PDF (самый востребованный, самый сложный)
 ODP/ODS/ODT (LibreOffice)
